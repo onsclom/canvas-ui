@@ -164,7 +164,6 @@ export function endTick() {
 
         // Render textbox
         const isFocused = state.focused === id;
-        const isHovered = state.hovering === id;
 
         ctx.fillStyle = borderColor;
         ctx.fillRect(x, y, width, height);

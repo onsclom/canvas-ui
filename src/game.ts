@@ -9,7 +9,7 @@ const state = {
 }
 
 function plural(word: string, count: number) {
-  return count === 1 ? word : word + "s"
+  return word + (count === 1 ? "" : "s");
 }
 
 const fps_measure_window = 1000;
