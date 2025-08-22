@@ -1,4 +1,5 @@
 import { canvas } from "./dom"
+import { assert } from "./assert"
 
 const borderColor = "#111"
 const hoveredColor = "#555"
@@ -18,9 +19,9 @@ type UI = {
   y: number,
   width: number,
   height: number,
-  text?: string,
   id: string,
-  value?: Ref<boolean>, // only for checkbox
+  text?: string, // only for button
+  checkedValue?: Ref<boolean>, // only for checkbox
   textValue?: Ref<string>, // only for textbox
   placeholder?: string, // only for textbox
 }
@@ -34,7 +35,8 @@ export const state = {
   mouseY: 0,
   mouseJustClicked: false,
   uiToRender: [] as UI[],
-  keysPressed: [] as string[]
+  keysPressed: [] as string[],
+  lastAction: {} as Record<string, number>
 }
 
 canvas.addEventListener("pointermove", (event) => {
@@ -60,7 +62,7 @@ export function startTick(ctx: CanvasRenderingContext2D) {
   state.ctx = ctx;
 }
 
-export function endTick() {
+export function endTick(dt: number) {
   // calculate new hovered
   state.hovering = null;
   for (const ui of state.uiToRender) {
@@ -77,8 +79,11 @@ export function endTick() {
   state.clicked = null;
   if (state.mouseJustClicked) {
     state.clicked = state.hovering;
+    if (state.clicked) { state.lastAction[state.clicked] = performance.now() }
     // Update focus for textboxes
     const clickedUI = state.uiToRender.find(ui => ui.id === state.hovering);
+
+    // TODO: make buttons and checkboxes focusable?
     if (clickedUI?.type === "textbox") {
       state.focused = state.hovering;
     } else {
@@ -87,22 +92,43 @@ export function endTick() {
   }
   state.mouseJustClicked = false;
 
-  // draw UI & handle updates (in the case of checkbox)
+
+
+  function drawActionFlash(
+    ctx: CanvasRenderingContext2D,
+    actionFactor: number,
+    x: number,
+    y: number,
+    width: number,
+    height: number,
+  ) {
+    // action flash?
+    ctx.save()
+    ctx.fillStyle = "white"
+    ctx.globalAlpha = actionFactor * .5
+    ctx.fillRect(x, y, width, height)
+    ctx.restore()
+
+  }
+
+  // draw UI & handle updates
   const ctx = state.ctx;
   assert(ctx !== null);
   for (const ui of state.uiToRender) {
+    const actionAnimationTime = 500;
+    const idsLastAction = state.lastAction[ui.id]
+    const timeSinceAction = idsLastAction ?
+      performance.now() - idsLastAction : actionAnimationTime
+    const actionFactor = (1 - (Math.min(timeSinceAction, actionAnimationTime) / actionAnimationTime)) ** 2
+
     switch (ui.type) {
       case "checkbox": {
-        const { x, y, width, height, id, value } = ui;
+        const { x, y, width, height, id, checkedValue: value } = ui;
         assert(value !== undefined)
-
-        if (state.clicked === id) {
-          value.value = !value.value;
-        }
+        if (state.clicked === id) { value.value = !value.value; }
 
         ctx.fillStyle = borderColor;
         ctx.fillRect(x, y, width, height);
-
         ctx.fillStyle = state.hovering === id ? hoveredColor : nonHoveredColor;
         ctx.fillRect(
           x + borderSize,
@@ -114,6 +140,7 @@ export function endTick() {
           ctx.fillStyle = textColor
           ctx.fillRect(x + 5, y + 5, width - 10, height - 10);
         }
+        drawActionFlash(ctx, actionFactor, x, y, width, height)
         break;
       }
 
@@ -130,7 +157,6 @@ export function endTick() {
           height - borderSize * 2
         )
 
-        ctx.fillStyle = "black";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillStyle = textColor;
@@ -143,6 +169,9 @@ export function endTick() {
           ctx.fillText(text || "", x + width / 2, y + height / 2);
           ctx.restore();
         }
+
+        drawActionFlash(ctx, actionFactor, x, y, width, height)
+
         break
       }
       case "textbox": {
@@ -154,7 +183,7 @@ export function endTick() {
           for (const key of state.keysPressed) {
             if (key === "Backspace") {
               textValue.value = textValue.value.slice(0, -1);
-            } else if (key === "Enter") {
+            } else if (key === "Enter" || key === "Escape") {
               state.focused = null;
             } else if (key.length === 1) {
               textValue.value += key;
@@ -205,8 +234,9 @@ export function endTick() {
           ctx.fillStyle = textColor;
           ctx.fillRect(textX + textWidth, textY - 8, 1, 16);
         }
-
         ctx.restore();
+
+        drawActionFlash(ctx, actionFactor, x, y, width, height)
         break;
       }
     }
@@ -214,7 +244,6 @@ export function endTick() {
 
   // Clear processed keys
   state.keysPressed = [];
-
   state.uiToRender = [];
 }
 
@@ -234,7 +263,7 @@ export function checkbox(props: {
     width,
     height,
     id,
-    value,
+    checkedValue: value,
   });
 }
 
@@ -268,7 +297,7 @@ export function textbox(props: {
   height: number,
   value: Ref<string>,
   placeholder?: string,
-}) {
+}): boolean {
   const { x, y, width, height, value, id, placeholder } = props;
   state.uiToRender.push({
     type: "textbox",
@@ -280,8 +309,5 @@ export function textbox(props: {
     textValue: value,
     placeholder,
   });
-}
-
-function assert(condition: boolean): asserts condition {
-  if (!condition) { throw new Error("Assertion failed"); }
+  return false; // TODO: return true if "enter" was pressed while focused
 }

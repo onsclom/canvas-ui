@@ -18,7 +18,7 @@ function raf() {
     prevTime = now;
     UI.startTick(ctx);
     tick(dt, canvasRect, ctx);
-    UI.endTick();
+    UI.endTick(dt);
   }
 
   requestAnimationFrame(raf);
